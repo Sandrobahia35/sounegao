@@ -1,0 +1,9 @@
+
+{
+  "name": "Sou Negão Barber Shop",
+  "description": "Sistema de agendamento moderno para a Sou Negão Barber Shop, com assistente virtual integrado para recomendações de estilo.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
