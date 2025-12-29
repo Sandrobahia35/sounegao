@@ -16,11 +16,12 @@ export const createAppointment = async (data: {
     barberId: string;
     customerName: string;
     customerPhone: string;
-    customerEmail?: string;
+    customerEmail: string;
     date: Date;
     time: string;
     serviceIds: string[];
-}) => {
+    userId?: string; // New optional user ID
+}): Promise<{ success: boolean; error?: string }> => {
     // Format date to YYYY-MM-DD
     const dateStr = data.date.toISOString().split('T')[0];
 
@@ -34,7 +35,8 @@ export const createAppointment = async (data: {
         p_customer_email: (data.customerEmail || '').toLowerCase() || null,
         p_date: dateStr,
         p_time: timeStr,
-        p_service_ids: data.serviceIds
+        p_service_ids: data.serviceIds,
+        p_user_id: data.userId || null // Pass user ID
     });
 
     if (error) {
@@ -90,13 +92,13 @@ export interface CustomerAppointment {
 }
 
 // Get customer appointments by email
-export const getCustomerAppointments = async (customerEmail: string): Promise<{
+export const getCustomerAppointments = async (customerEmail: string, userId?: string): Promise<{
     upcoming: CustomerAppointment[];
     history: CustomerAppointment[];
 }> => {
     try {
         // Query appointments with barber info
-        const { data, error } = await supabase
+        let query = supabase
             .from('appointments')
             .select(`
                 id,
@@ -114,8 +116,17 @@ export const getCustomerAppointments = async (customerEmail: string): Promise<{
                     name,
                     photo_url
                 )
-            `)
-            .eq('customer_email', customerEmail.toLowerCase())
+            `);
+
+        // Prefer User ID filter if available (Robust)
+        if (userId) {
+            query = query.eq('user_id', userId);
+        } else {
+            // Fallback to Email (Case Insensitive)
+            query = query.eq('customer_email', customerEmail.toLowerCase());
+        }
+
+        const { data, error } = await query
             .order('appointment_date', { ascending: false })
             .order('appointment_time', { ascending: false });
 

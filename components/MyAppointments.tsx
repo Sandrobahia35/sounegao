@@ -23,7 +23,7 @@ const MyAppointments: React.FC<MyAppointmentsProps> = ({ customer, onLogout }) =
     const reloadData = async () => {
         if (customer.email) {
             setIsLoading(true);
-            const result = await getCustomerAppointments(customer.email);
+            const result = await getCustomerAppointments(customer.email, customer.id);
             setUpcoming(result.upcoming);
             setHistory(result.history);
             setIsLoading(false);
@@ -33,7 +33,7 @@ const MyAppointments: React.FC<MyAppointmentsProps> = ({ customer, onLogout }) =
     useEffect(() => {
         const loadAppointments = async () => {
             setIsLoading(true);
-            const result = await getCustomerAppointments(customer.email);
+            const result = await getCustomerAppointments(customer.email, customer.id);
             setUpcoming(result.upcoming);
             setHistory(result.history);
             setIsLoading(false);

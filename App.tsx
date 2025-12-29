@@ -160,7 +160,8 @@ const App: React.FC = () => {
         customerEmail: customerUser?.email || userInfo.email, // Use authenticated email if available
         date: selectedDate,
         time: selectedTime,
-        serviceIds: selectedServices.map((s: Service) => s.id)
+        serviceIds: selectedServices.map((s: Service) => s.id),
+        userId: customerUser?.id // Pass User ID for robust sync
       });
 
       if (result.success) {
