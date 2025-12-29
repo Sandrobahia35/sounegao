@@ -247,21 +247,32 @@ const App: React.FC = () => {
   const { total, hasQuote } = calculateTotal();
 
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
     const fetchSlots = async () => {
       if (selectedBarber && selectedDate) {
+        setLoadingSlots(true);
         setAvailableSlots([]); // Clear while fetching
         try {
-          // If Sunday logic is handled by service config, we rely on service.
-          // But service returns [] for Sunday by default unless configured.
+          console.log('Fetching slots for barber:', selectedBarber.id, 'date:', selectedDate);
           const slots = await getAvailableSlots(selectedBarber.id, selectedDate);
+          console.log('Received slots:', slots);
           setAvailableSlots(slots);
+
+          // Auto-select first available slot if none selected or current selection not available
+          if (slots.length > 0 && (!selectedTime || !slots.includes(selectedTime))) {
+            setSelectedTime(slots[0]);
+          }
         } catch (error) {
-          console.error("Error fetching slots", error);
+          console.error("Error fetching slots:", error);
+          alert('Erro ao carregar horários disponíveis. Por favor, tente novamente.');
+        } finally {
+          setLoadingSlots(false);
         }
       } else {
         setAvailableSlots([]);
+        setLoadingSlots(false);
       }
     };
     fetchSlots();
@@ -383,28 +394,47 @@ const App: React.FC = () => {
                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-text-secondary mb-1">
                       Horários Disponíveis ({capitalizedDayOfWeek})
                     </h3>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                      {availableSlots.map((time: string) => {
-                        const isBusy = BUSY_SLOTS.includes(time);
-                        const isSelected = selectedTime === time;
-                        return (
-                          <button
-                            key={time}
-                            disabled={isBusy}
-                            onClick={() => setSelectedTime(time)}
-                            className={`py-2 px-3 rounded-lg border text-sm font-medium transition-all ${isSelected
-                              ? 'border-primary bg-primary text-white shadow-md shadow-primary/20 font-bold'
-                              : isBusy
-                                ? 'border-transparent bg-slate-100 dark:bg-surface-dark/50 text-slate-300 dark:text-slate-700 cursor-not-allowed line-through'
-                                : 'border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:border-primary hover:text-primary dark:hover:text-white dark:hover:border-primary'
-                              }`}
-                          >
-                            {time}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {dayOfWeekIndex === 0 && (
+
+                    {!selectedBarber ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-700 mb-2">person_search</span>
+                        <p className="text-sm text-slate-500 dark:text-slate-600">Selecione um profissional para ver os horários disponíveis</p>
+                      </div>
+                    ) : loadingSlots ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="size-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                      </div>
+                    ) : availableSlots.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-700 mb-2">event_busy</span>
+                        <p className="text-sm text-slate-500 dark:text-slate-600">Nenhum horário disponível para esta data</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-700 mt-1">Tente selecionar outro dia</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {availableSlots.map((time: string) => {
+                          const isBusy = BUSY_SLOTS.includes(time);
+                          const isSelected = selectedTime === time;
+                          return (
+                            <button
+                              key={time}
+                              disabled={isBusy}
+                              onClick={() => setSelectedTime(time)}
+                              className={`py-2 px-3 rounded-lg border text-sm font-medium transition-all ${isSelected
+                                ? 'border-primary bg-primary text-white shadow-md shadow-primary/20 font-bold'
+                                : isBusy
+                                  ? 'border-transparent bg-slate-100 dark:bg-surface-dark/50 text-slate-300 dark:text-slate-700 cursor-not-allowed line-through'
+                                  : 'border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:border-primary hover:text-primary dark:hover:text-white dark:hover:border-primary'
+                                }`}
+                            >
+                              {time}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {dayOfWeekIndex === 0 && availableSlots.length > 0 && (
                       <p className="text-[10px] text-orange-400 font-bold uppercase mt-2">
                         * Aos domingos funcionamos apenas até as 13:00.
                       </p>

@@ -10,13 +10,15 @@ import {
     BlockedPeriod,
     ManagementSlot,
     getDailyManagementSlots,
-    upsertDailySlot
+    saveDaySlots
 } from '../services/scheduleService';
 import BottomNavigation from './BottomNavigation';
 import { Page } from '../types';
-import { getBarberAppointments, Appointment, updateAppointmentStatus } from '../services/appointmentService';
+import { getBarberAppointments, Appointment, updateAppointmentStatus, archiveAppointment } from '../services/appointmentService';
 import BarberFinancials from './BarberFinancials';
 import ServiceManager from './ServiceManager';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface BarberProfileProps {
     currentUser: User;
@@ -29,6 +31,7 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
     const [barberId, setBarberId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'weekly' | 'exceptions' | 'appointments' | 'daily' | 'finance' | 'services'>('appointments');
+    const [appointmentSubTab, setAppointmentSubTab] = useState<'active' | 'history' | 'cancelled'>('active');
 
     // Schedule Config State
     const [configs, setConfigs] = useState<ScheduleConfig[]>([]);
@@ -44,11 +47,54 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
     // Appointments State
     const [appointments, setAppointments] = useState<Appointment[]>([]);
 
+    // Derived Logic for Filtering
+    const filteredAppointments = appointments.filter(app => {
+        if (appointmentSubTab === 'active') return app.status === 'pending' || app.status === 'confirmed';
+        if (appointmentSubTab === 'history') return app.status === 'completed';
+        if (appointmentSubTab === 'cancelled') return app.status === 'cancelled' || app.status === 'no_show';
+        return false;
+    });
+
+    const handleArchive = async (id: string) => {
+        const result = await archiveAppointment(id);
+        if (result.success) {
+            loadBarberData();
+        } else {
+            alert('Erro ao excluir: ' + result.error);
+        }
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+
+        doc.setFontSize(18);
+        doc.text(`Relatório de Agendamentos - ${appointmentSubTab === 'history' ? 'Histórico' : 'Cancelados'}`, 14, 22);
+
+        doc.setFontSize(11);
+        doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 14, 30);
+        doc.text(`Barbeiro: ${currentUser.name}`, 14, 36);
+
+        const tableData = filteredAppointments.map(app => [
+            new Date(app.appointment_date).toLocaleDateString('pt-BR'),
+            app.appointment_time.substring(0, 5),
+            app.customer_name,
+            app.customer_phone,
+            app.service_names,
+            app.status
+        ]);
+
+        autoTable(doc, {
+            head: [['Data', 'Hora', 'Cliente', 'Telefone', 'Serviços', 'Status']],
+            body: tableData,
+            startY: 44,
+        });
+
+        doc.save(`relatorio_${appointmentSubTab}_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     const [managementSlots, setManagementSlots] = useState<ManagementSlot[]>([]);
     const [managementDate, setManagementDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [mgmtLoading, setMgmtLoading] = useState(false);
-    const [editingSlot, setEditingSlot] = useState<string | null>(null); // Time being edited
-    const [editValue, setEditValue] = useState<string>('');
 
     useEffect(() => {
         loadBarberData();
@@ -74,7 +120,8 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                             day_of_week: index,
                             start_time: '09:00',
                             end_time: '19:00',
-                            is_active: false
+                            is_active: false,
+                            slot_duration: 30
                         };
 
                         if (index >= 1 && index <= 4) { // Mon-Thu
@@ -115,6 +162,7 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
         }
     };
 
+    // --- Daily Management Logic ---
     const loadMgmtSlots = async () => {
         if (!barberId) return;
         setMgmtLoading(true);
@@ -129,38 +177,46 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
         }
     }, [activeTab, managementDate, barberId]);
 
-    const handleToggleSlot = async (time: string, currentStatus: string) => {
+    // Save the entire grid effectively
+    const handleSaveDay = async (newSlots: ManagementSlot[]) => {
         if (!barberId) return;
-        if (currentStatus === 'booked') {
-            alert('Este horário já possui um agendamento e não pode ser desativado manualmente.');
-            return;
-        }
 
-        const isAvailable = currentStatus === 'blocked'; // If blocked, we want to make it available
-        const result = await upsertDailySlot(barberId, managementDate, time, time, isAvailable);
-        if (result.success) {
-            loadMgmtSlots();
+        // Extract just the available/booked times
+        const times = newSlots.map(s => s.time);
+
+        console.log('Saving daily grid:', times);
+
+        // Optimistic UI
+        setManagementSlots(newSlots);
+
+        const result = await saveDaySlots(barberId, managementDate, times);
+        if (!result.success) {
+            alert('Erro ao salvar grade: ' + result.error);
+            loadMgmtSlots(); // Revert
         } else {
-            alert('Erro ao alterar horário: ' + result.error);
+            // Success
         }
     };
 
-    const handleSaveSlotTime = async (oldTime: string, newTime: string) => {
-        if (!barberId) return;
-        if (oldTime === newTime) {
-            setEditingSlot(null);
+    const handleToggleSlot = async (time: string, currentStatus: string) => {
+        // In Free Grid mode, "Toggle" usually means Remove if exists
+        // But if it's booked, we can't remove?
+
+        const slot = managementSlots.find(s => s.time === time);
+        if (slot?.status === 'booked') {
+            alert('Este horário possui um agendamento e não pode ser removido.');
             return;
         }
 
-        setMgmtLoading(true);
-        const result = await upsertDailySlot(barberId, managementDate, oldTime, newTime, true);
-        if (result.success) {
-            await loadMgmtSlots();
-        } else {
-            alert('Erro ao salvar horário: ' + result.error);
+        // If exists (available), remove it
+        // If we want to support "Block", we could toggle status.
+        // But "Grade Livre" philosophy: If it's there, it's open. If not, it's not.
+        // So clicking an available slot -> Remove it.
+
+        if (confirm(`Remover o horário ${time}?`)) {
+            const newSlots = managementSlots.filter(s => s.time !== time);
+            await handleSaveDay(newSlots);
         }
-        setEditingSlot(null);
-        setMgmtLoading(false);
     };
 
     const handleAddSlot = async () => {
@@ -169,7 +225,20 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
             if (time) alert('Formato de hora inválido. Use HH:MM');
             return;
         }
-        await handleSaveSlotTime(time, time); // oldTime=newTime for brand new slots
+        // Check duplicate
+        if (managementSlots.some(s => s.time === time)) {
+            alert('Este horário já existe na grade.');
+            return;
+        }
+
+        const newSlot: ManagementSlot = {
+            time,
+            status: 'available',
+            isCustom: true
+        };
+
+        const newSlots = [...managementSlots, newSlot].sort((a, b) => a.time.localeCompare(b.time));
+        await handleSaveDay(newSlots);
     };
 
 
@@ -295,15 +364,43 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                             </button>
                         </div>
 
-                        {appointments.length === 0 ? (
+                        {/* Sub-tabs for Appointments */}
+                        <div className="flex bg-black/20 p-1 rounded-xl w-full sm:w-fit mb-4">
+                            {(['active', 'history', 'cancelled'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setAppointmentSubTab(tab)}
+                                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-bold transition-all ${appointmentSubTab === tab
+                                        ? 'bg-surface-card text-white shadow-md'
+                                        : 'text-slate-500 hover:text-white'
+                                        }`}
+                                >
+                                    {tab === 'active' ? 'Ativos' : tab === 'history' ? 'Histórico' : 'Cancelados'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Actions Bar (Export) */}
+                        {(appointmentSubTab === 'history' || appointmentSubTab === 'cancelled') && (
+                            <div className="flex justify-end mb-2">
+                                <button
+                                    onClick={handleExportPDF}
+                                    className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all border border-white/10"
+                                >
+                                    <span>📄</span> Exportar PDF
+                                </button>
+                            </div>
+                        )}
+
+                        {filteredAppointments.length === 0 ? (
                             <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-xl border-2 border-dashed border-slate-200 dark:border-border-dark">
-                                <p className="text-slate-500 dark:text-text-secondary">Nenhum agendamento encontrado.</p>
+                                <p className="text-slate-500 dark:text-text-secondary">Nenhum agendamento nesta categoria.</p>
                             </div>
                         ) : (
                             <>
                                 {/* Mobile view: Cards */}
                                 <div className="md:hidden space-y-4">
-                                    {appointments.map((app) => (
+                                    {filteredAppointments.map((app) => (
                                         <div key={app.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-4 relative overflow-hidden group">
                                             {/* Status Badge Background */}
                                             <div className={`absolute top-0 right-0 h-1 w-full ${app.status === 'pending' ? 'bg-orange-500' :
@@ -320,13 +417,30 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                                                         {app.appointment_time.substring(0, 5)}
                                                     </div>
                                                 </div>
-                                                <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider ${app.status === 'pending' ? 'bg-orange-500/10 text-orange-500' :
-                                                    app.status === 'completed' ? 'bg-green-500/10 text-green-500' :
-                                                        app.status === 'cancelled' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-500'
-                                                    }`}>
-                                                    {app.status === 'pending' ? 'Pendente' :
-                                                        app.status === 'completed' ? 'Concluído' :
-                                                            app.status === 'cancelled' ? 'Cancelado' : app.status}
+
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider ${app.status === 'pending' ? 'bg-orange-500/10 text-orange-500' :
+                                                        app.status === 'completed' ? 'bg-green-500/10 text-green-500' :
+                                                            app.status === 'cancelled' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-500'
+                                                        }`}>
+                                                        {app.status === 'pending' ? 'Pendente' :
+                                                            app.status === 'completed' ? 'Concluído' :
+                                                                app.status === 'cancelled' ? 'Cancelado' : app.status}
+                                                    </div>
+
+                                                    {(appointmentSubTab === 'history' || appointmentSubTab === 'cancelled') && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (confirm('Tem certeza que deseja excluir este registro do histórico/cancelados? (O valor financeiro será mantido)')) {
+                                                                    await handleArchive(app.id);
+                                                                }
+                                                            }}
+                                                            className="text-[10px] text-red-400 hover:text-red-300 underline mt-1"
+                                                        >
+                                                            Excluir
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -383,7 +497,7 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {appointments.map((app) => (
+                                            {filteredAppointments.map((app) => (
                                                 <tr key={app.id} className="border-b border-slate-100 dark:border-border-dark/50 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group">
                                                     <td className="py-4 px-4">
                                                         <div className="font-black text-slate-900 dark:text-white whitespace-nowrap">
@@ -407,15 +521,31 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                                                     </td>
                                                     <td className="py-4 px-4">
                                                         <div className="flex flex-col items-end gap-2">
-                                                            <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap tracking-wider ${app.status === 'pending' ? 'bg-orange-500/10 text-orange-500' :
-                                                                app.status === 'completed' ? 'bg-green-500/10 text-green-500' :
-                                                                    app.status === 'cancelled' ? 'bg-red-500/10 text-red-500' :
-                                                                        'bg-slate-100 text-slate-600'
-                                                                }`}>
-                                                                {app.status === 'pending' ? 'Pendente' :
-                                                                    app.status === 'completed' ? 'Concluído' :
-                                                                        app.status === 'cancelled' ? 'Cancelado' : app.status}
-                                                            </span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap tracking-wider ${app.status === 'pending' ? 'bg-orange-500/10 text-orange-500' :
+                                                                    app.status === 'completed' ? 'bg-green-500/10 text-green-500' :
+                                                                        app.status === 'cancelled' ? 'bg-red-500/10 text-red-500' :
+                                                                            'bg-slate-100 text-slate-600'
+                                                                    }`}>
+                                                                    {app.status === 'pending' ? 'Pendente' :
+                                                                        app.status === 'completed' ? 'Concluído' :
+                                                                            app.status === 'cancelled' ? 'Cancelado' : app.status}
+                                                                </span>
+
+                                                                {(appointmentSubTab === 'history' || appointmentSubTab === 'cancelled') && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (confirm('Excluir este registro?')) {
+                                                                                await handleArchive(app.id);
+                                                                            }
+                                                                        }}
+                                                                        className="size-6 bg-red-500/10 hover:bg-red-500/30 text-red-500 rounded flex items-center justify-center transition-colors"
+                                                                        title="Excluir (Arquivar)"
+                                                                    >
+                                                                        <span className="text-xs">🗑️</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
 
                                                             {app.status === 'pending' && (
                                                                 <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
@@ -479,53 +609,29 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                                             : 'border-green-500/20 bg-green-500/5 hover:border-green-500 shadow-lg cursor-pointer'
                                         }`}
                                     onClick={() => {
-                                        if (slot.status !== 'booked' && editingSlot !== slot.time) {
+                                        if (slot.status !== 'booked') {
                                             handleToggleSlot(slot.time, slot.status);
                                         }
                                     }}
+                                    title={slot.status === 'booked' ? 'Horário Reservado' : 'Clique para remover'}
                                 >
-                                    {editingSlot === slot.time ? (
-                                        <input
-                                            autoFocus
-                                            type="text"
-                                            value={editValue}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onChange={(e) => setEditValue(e.target.value)}
-                                            onBlur={() => handleSaveSlotTime(slot.time, editValue)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') handleSaveSlotTime(slot.time, editValue);
-                                                if (e.key === 'Escape') setEditingSlot(null);
-                                            }}
-                                            className="w-full text-center bg-white/20 text-white text-lg font-black rounded-lg outline-none border-2 border-primary py-2"
-                                        />
-                                    ) : (
-                                        <div
-                                            className="flex flex-col items-center w-full"
-                                            onClick={(e) => {
-                                                if (slot.status !== 'booked') {
-                                                    e.stopPropagation();
-                                                    setEditingSlot(slot.time);
-                                                    setEditValue(slot.time);
-                                                }
-                                            }}
+                                    <div className="flex flex-col items-center w-full">
+                                        <span
+                                            className={`text-xl font-black transition-all ${slot.status === 'booked' ? 'text-orange-500' :
+                                                slot.status === 'blocked' ? 'text-slate-600' : 'text-green-500'
+                                                }`}
                                         >
-                                            <span
-                                                className={`text-xl font-black transition-all ${slot.status === 'booked' ? 'text-orange-500' :
-                                                    slot.status === 'blocked' ? 'text-slate-600' : 'text-green-500'
-                                                    }`}
-                                            >
-                                                {slot.time}
-                                            </span>
-                                            <span className={`text-[8px] font-black uppercase tracking-[0.15em] px-1.5 py-0.5 rounded ${slot.status === 'booked' ? 'bg-orange-500 text-black' :
-                                                slot.status === 'blocked' ? 'bg-slate-700 text-slate-500' : 'bg-green-500 text-black'
-                                                }`}>
-                                                {slot.status === 'booked' ? 'RESERVADO' : slot.status === 'blocked' ? 'OFF' : 'ATIVO'}
-                                            </span>
-                                        </div>
-                                    )}
+                                            {slot.time}
+                                        </span>
+                                        <span className={`text-[8px] font-black uppercase tracking-[0.15em] px-1.5 py-0.5 rounded ${slot.status === 'booked' ? 'bg-orange-500 text-black' :
+                                            slot.status === 'blocked' ? 'bg-slate-700 text-slate-500' : 'bg-green-500 text-black'
+                                            }`}>
+                                            {slot.status === 'booked' ? 'RESERVADO' : slot.status === 'blocked' ? 'OFF' : 'ATIVO'}
+                                        </span>
+                                    </div>
 
                                     {slot.isCustom && (
-                                        <div className="absolute top-2 right-2 size-2 bg-primary rounded-full shadow-[0_0_8px_rgba(234,179,8,0.6)]" />
+                                        <div className="absolute top-2 right-2 size-2 bg-primary rounded-full shadow-[0_0_8px_rgba(234,179,8,0.6)]" title="Horário Personalizado" />
                                     )}
                                 </div>
                             ))}
@@ -581,6 +687,21 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                                                 onChange={(e) => handleConfigChange(index, 'end_time', e.target.value)}
                                                 className="bg-black/20 rounded p-2 text-white border border-white/10 focus:border-primary outline-none transition-colors"
                                             />
+
+                                            <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
+
+                                            {/* Slot Duration Input */}
+                                            <div className="flex items-center gap-1 bg-black/20 rounded p-1 border border-white/10">
+                                                <span className="text-xs text-slate-400 pl-2">Min:</span>
+                                                <input
+                                                    type="number"
+                                                    min="10"
+                                                    step="5"
+                                                    value={config.slot_duration || 30}
+                                                    onChange={(e) => handleConfigChange(index, 'slot_duration', parseInt(e.target.value))}
+                                                    className="bg-transparent rounded p-1 text-white w-12 text-center focus:outline-none appearance-none"
+                                                />
+                                            </div>
 
                                             <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
 

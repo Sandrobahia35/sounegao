@@ -229,3 +229,16 @@ export const rescheduleAppointment = async (appointmentId: string, date: string,
 
     return { success: true };
 };
+
+export const archiveAppointment = async (appointmentId: string) => {
+    const { data, error } = await supabase.rpc('archive_appointment_rpc', {
+        p_appointment_id: appointmentId
+    });
+
+    if (error) {
+        console.error('Error archiving appointment:', error);
+        return { success: false, error: error.message };
+    }
+
+    return data as { success: boolean, error?: string };
+};
