@@ -118,9 +118,11 @@ export const getCustomerAppointments = async (customerEmail: string, userId?: st
                 )
             `);
 
-        // Prefer User ID filter if available (Robust)
+        // Prefer User ID filter if available but fallback/include Email for legacy data
         if (userId) {
-            query = query.eq('user_id', userId);
+            // Unify query: (user_id = ID) OR (customer_email = EMAIL)
+            // Supabase .or requires full syntax: "user_id.eq.ID,customer_email.eq.EMAIL"
+            query = query.or(`user_id.eq.${userId},customer_email.eq.${customerEmail.toLowerCase()}`);
         } else {
             // Fallback to Email (Case Insensitive)
             query = query.eq('customer_email', customerEmail.toLowerCase());
@@ -135,8 +137,12 @@ export const getCustomerAppointments = async (customerEmail: string, userId?: st
             return { upcoming: [], history: [] };
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Use String Comparison for Dates (Timezone Safe)
+        // Get local YYYY-MM-DD
+        const localDate = new Date();
+        const offset = localDate.getTimezoneOffset();
+        localDate.setMinutes(localDate.getMinutes() - offset);
+        const todayStr = localDate.toISOString().split('T')[0]; // "2025-12-28"
 
         const appointments: CustomerAppointment[] = (data || []).map((apt: any) => ({
             id: apt.id,
@@ -155,13 +161,12 @@ export const getCustomerAppointments = async (customerEmail: string, userId?: st
         }));
 
         const upcoming = appointments.filter(apt => {
-            const aptDate = new Date(apt.appointment_date);
-            return aptDate >= today && apt.status !== 'cancelled' && apt.status !== 'completed';
+            // Compare YYYY-MM-DD strings directly
+            return apt.appointment_date >= todayStr && apt.status !== 'cancelled' && apt.status !== 'completed';
         }).reverse(); // Closest date first
 
         const history = appointments.filter(apt => {
-            const aptDate = new Date(apt.appointment_date);
-            return aptDate < today || apt.status === 'completed' || apt.status === 'cancelled';
+            return apt.appointment_date < todayStr || apt.status === 'completed' || apt.status === 'cancelled';
         });
 
         return { upcoming, history };
