@@ -135,128 +135,30 @@ export const getEffectiveScheduleConfig = async (barberId: string): Promise<Sche
 };
 
 export const getAvailableSlots = async (barberId: string, date: Date): Promise<string[]> => {
-    // 1. Fetch Schedule
-    const schedule = await getBarberSchedule(barberId);
-    if (!schedule.success) return [];
+    try {
+        // Get local YYYY-MM-DD for the query date
+        const localDate = new Date(date);
+        const offset = localDate.getTimezoneOffset();
+        localDate.setMinutes(localDate.getMinutes() - offset);
+        const dateStr = localDate.toISOString().split('T')[0];
 
-    const dayOfWeek = date.getDay(); // 0-6
-    const dateStr = date.toISOString().split('T')[0];
-    const blocks = (schedule.blocks as BlockedPeriod[]).filter(b => b.date === dateStr);
-
-    // 2. Check for 'working' exception (Override)
-    const workingException = blocks.find(b => b.type === 'working');
-
-    let slots: string[] = [];
-    let configForSlots: { start: string, end: string, lunchStart?: string, lunchEnd?: string } | null = null;
-
-    if (workingException) {
-        if (workingException.start_time && workingException.end_time) {
-            configForSlots = {
-                start: workingException.start_time,
-                end: workingException.end_time
-            };
-        } else {
-            configForSlots = { start: '09:00', end: '18:00' };
-        }
-    } else {
-        // Reuse Effective Config Logic implicitly for consistency?
-        // Or duplicate logic? calling getEffectiveScheduleConfig is async and fetches again (redundant).
-        // I'll inline the logic but keep it matched.
-
-        const config = (schedule.configs as ScheduleConfig[]).find(c => c.day_of_week === dayOfWeek);
-        let activeConfig = config;
-
-        if (!activeConfig) {
-            // Defaults (Same as getEffectiveScheduleConfig)
-            if (dayOfWeek >= 1 && dayOfWeek <= 4) { // Mon-Thu
-                activeConfig = { day_of_week: dayOfWeek, start_time: '09:00', end_time: '19:30', is_active: true };
-            } else if (dayOfWeek === 5) { // Fri
-                activeConfig = { day_of_week: dayOfWeek, start_time: '09:00', end_time: '17:00', is_active: true };
-            } else if (dayOfWeek === 0) { // Sun
-                activeConfig = { day_of_week: dayOfWeek, start_time: '09:00', end_time: '13:00', is_active: true };
-            } else { // Sat
-                return [];
-            }
-        }
-
-        if (!activeConfig.is_active) return [];
-
-        configForSlots = {
-            start: activeConfig.start_time,
-            end: activeConfig.end_time,
-            lunchStart: activeConfig.lunch_start || undefined,
-            lunchEnd: activeConfig.lunch_end || undefined
-        };
-    }
-
-    // 3. Generate Slots
-    if (!configForSlots) return [];
-
-    slots = generateSlots(configForSlots.start, configForSlots.end);
-
-    // 4. Filter Lunch
-    if (configForSlots.lunchStart && configForSlots.lunchEnd) {
-        slots = slots.filter(time => !(time >= configForSlots.lunchStart! && time < configForSlots.lunchEnd!));
-    }
-
-    // 5. Filter 'blocked' exceptions
-    const blockedPeriods = blocks.filter(b => b.type === 'blocked' || !b.type);
-
-    blockedPeriods.forEach(block => {
-        if (!block.start_time) {
-            slots = [];
-        } else {
-            slots = slots.filter(time => {
-                const blockStart = block.start_time!;
-                const blockEnd = block.end_time || '23:59';
-                return !(time >= blockStart && time < blockEnd);
-            });
-        }
-    });
-
-    // 6. Filter Booked Appointments (CRITICAL FIX)
-    const { data: bookedApps } = await supabase
-        .from('appointments')
-        .select('appointment_time')
-        .eq('barber_id', barberId)
-        .eq('appointment_date', dateStr)
-        .neq('status', 'cancelled');
-
-    if (bookedApps && bookedApps.length > 0) {
-        const bookedTimes = bookedApps.map(a => a.appointment_time.substring(0, 5));
-        slots = slots.filter(time => !bookedTimes.includes(time));
-    }
-
-    // 7. Filter Past Times (If Today) - NEW FIX
-    const now = new Date();
-    // Adjust for timezone -03:00 manually if environment is UTC but user expects Brazil
-    // But assuming date object is correct relative to system:
-    const todayStr = now.toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD local
-
-    // Check if queried date is today (compare YYYY-MM-DD parts)
-    const queryDateStr = date.toISOString().split('T')[0];
-
-    // Better comparison:
-    // Create 'today' date at 00:00
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
-
-    if (targetDate.getTime() === today.getTime()) {
-        const currentH = now.getHours();
-        const currentM = now.getMinutes();
-
-        slots = slots.filter(time => {
-            const [h, m] = time.split(':').map(Number);
-            if (h < currentH) return false;
-            if (h === currentH && m <= currentM) return false;
-            return true;
+        const { data, error } = await supabase.rpc('get_available_slots_rpc', {
+            p_barber_id: barberId,
+            p_date: dateStr
         });
-    }
 
-    return slots;
+        if (error) {
+            console.error('Error fetching available slots via RPC:', error);
+            return [];
+        }
+
+        return data || [];
+    } catch (err) {
+        console.error('Unexpected error fetching available slots:', err);
+        return [];
+    }
 };
+
 
 export const upsertDailySlot = async (barberId: string, date: string, oldTime: string, newTime: string, isActive: boolean) => {
     const { data, error } = await supabase.rpc('upsert_daily_slot_rpc', {

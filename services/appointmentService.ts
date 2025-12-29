@@ -97,86 +97,30 @@ export const getCustomerAppointments = async (customerEmail: string, userId?: st
     history: CustomerAppointment[];
 }> => {
     try {
-        // Query appointments with barber info and services via join
-        let query = supabase
-            .from('appointments')
-            .select(`
-                id,
-                barber_id,
-                customer_name,
-                customer_phone,
-                customer_email,
-                appointment_date,
-                appointment_time,
-                status,
-                created_at,
-                user_id,
-                barbers:barber_id (
-                    name,
-                    photo_url
-                ),
-                appointment_services (
-                    services (
-                        name,
-                        price
-                    )
-                )
-            `);
-
-        // Prefer User ID filter if available but fallback/include Email for legacy data
-        if (userId) {
-            query = query.or(`user_id.eq.${userId},customer_email.eq.${customerEmail.toLowerCase()}`);
-        } else {
-            query = query.eq('customer_email', customerEmail.toLowerCase());
-        }
-
-        const { data, error } = await query
-            .order('appointment_date', { ascending: false })
-            .order('appointment_time', { ascending: false });
+        const { data, error } = await supabase.rpc('get_customer_appointments_rpc', {
+            p_customer_email: customerEmail.toLowerCase(),
+            p_user_id: userId || null
+        });
 
         if (error) {
-            console.error('Error fetching customer appointments:', error);
+            console.error('Error fetching customer appointments via RPC:', error);
             return { upcoming: [], history: [] };
         }
 
-        // Use String Comparison for Dates (Timezone Safe)
-        const localDate = new Date();
-        const offset = localDate.getTimezoneOffset();
-        localDate.setMinutes(localDate.getMinutes() - offset);
-        const todayStr = localDate.toISOString().split('T')[0];
-
-        const appointments: CustomerAppointment[] = (data || []).map((apt: any) => {
-            // Compute service names and total price from joined data
-            const aptServices = (apt.appointment_services || [])
-                .map((as: any) => as.services)
-                .filter(Boolean);
-
-            return {
-                id: apt.id,
-                barber_id: apt.barber_id,
-                barber_name: apt.barbers?.name || 'Barbeiro',
-                barber_photo_url: apt.barbers?.photo_url || '',
-                customer_name: apt.customer_name,
-                customer_phone: apt.customer_phone,
-                customer_email: apt.customer_email,
-                appointment_date: apt.appointment_date,
-                appointment_time: apt.appointment_time,
-                status: apt.status,
-                created_at: apt.created_at,
-                service_names: aptServices.map((s: any) => s.name).join(', '),
-                total_price: aptServices.reduce((sum: number, s: any) => sum + (Number(s.price) || 0), 0)
-            };
-        });
-
-        const upcoming = appointments.filter(apt => {
-            return apt.appointment_date >= todayStr && apt.status !== 'cancelled' && apt.status !== 'completed';
-        }).reverse(); // Closest date first
-
-        const history = appointments.filter(apt => {
-            return apt.appointment_date < todayStr || apt.status === 'completed' || apt.status === 'cancelled';
-        });
-
-        return { upcoming, history };
+        return {
+            upcoming: (data.upcoming || []).map((apt: any) => ({
+                ...apt,
+                barber_photo_url: apt.barber_photo_path
+                    ? `https://aqvwaiogqiaxoayhsihg.supabase.co/storage/v1/object/public/barber-photos/${apt.barber_photo_path}`
+                    : ''
+            })),
+            history: (data.history || []).map((apt: any) => ({
+                ...apt,
+                barber_photo_url: apt.barber_photo_path
+                    ? `https://aqvwaiogqiaxoayhsihg.supabase.co/storage/v1/object/public/barber-photos/${apt.barber_photo_path}`
+                    : ''
+            }))
+        };
     } catch (err) {
         console.error('Unexpected error fetching appointments:', err);
         return { upcoming: [], history: [] };

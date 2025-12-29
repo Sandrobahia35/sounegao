@@ -36,7 +36,7 @@ const App: React.FC = () => {
     }
     return today;
   });
-  const [selectedTime, setSelectedTime] = useState<string>('10:00');
+  const [selectedTime, setSelectedTime] = useState<string>('');
   const [userInfo, setUserInfo] = useState<UserInfo>({ name: '', phone: '', email: '' });
   const [isBooked, setIsBooked] = useState(false);
 
