@@ -214,6 +214,19 @@ export const getAvailableSlots = async (barberId: string, date: Date): Promise<s
         }
     });
 
+    // 6. Filter Booked Appointments (CRITICAL FIX)
+    const { data: bookedApps } = await supabase
+        .from('appointments')
+        .select('appointment_time')
+        .eq('barber_id', barberId)
+        .eq('appointment_date', dateStr)
+        .neq('status', 'cancelled');
+
+    if (bookedApps && bookedApps.length > 0) {
+        const bookedTimes = bookedApps.map(a => a.appointment_time.substring(0, 5));
+        slots = slots.filter(time => !bookedTimes.includes(time));
+    }
+
     return slots;
 };
 

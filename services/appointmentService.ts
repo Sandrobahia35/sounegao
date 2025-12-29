@@ -31,7 +31,7 @@ export const createAppointment = async (data: {
         p_barber_id: data.barberId,
         p_customer_name: data.customerName,
         p_customer_phone: data.customerPhone,
-        p_customer_email: data.customerEmail || null,
+        p_customer_email: (data.customerEmail || '').toLowerCase() || null,
         p_date: dateStr,
         p_time: timeStr,
         p_service_ids: data.serviceIds
@@ -115,7 +115,7 @@ export const getCustomerAppointments = async (customerEmail: string): Promise<{
                     photo_url
                 )
             `)
-            .eq('customer_email', customerEmail)
+            .eq('customer_email', customerEmail.toLowerCase())
             .order('appointment_date', { ascending: false })
             .order('appointment_time', { ascending: false });
 
