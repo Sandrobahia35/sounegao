@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Barber, Service, Page } from '../types';
 import { getUsers, deleteUser, createUser, User, UserRole } from '../services/authService';
 import { getBarbers, deleteBarber, createBarber, updateBarber } from '../services/barberService';
-import { getServices, deleteService, createService, updateService } from '../services/serviceService';
+import ServiceManager from './ServiceManager';
 import BottomNavigation from './BottomNavigation';
 
 interface AdminDashboardProps {
@@ -14,7 +14,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onLogout }
     const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'barbers' | 'users' | 'settings'>('appointments');
     const [users, setUsers] = useState<User[]>([]);
     const [barbers, setBarbers] = useState<Barber[]>([]);
-    const [services, setServices] = useState<Service[]>([]);
 
     // New user form
     const [showNewUserForm, setShowNewUserForm] = useState(false);
@@ -36,23 +35,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onLogout }
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Service form
-    const [showServiceForm, setShowServiceForm] = useState(false);
-    const [editingService, setEditingService] = useState<Service | null>(null);
-    const [serviceName, setServiceName] = useState('');
-    const [serviceDuration, setServiceDuration] = useState('');
-    const [servicePrice, setServicePrice] = useState('');
-    const [serviceDescription, setServiceDescription] = useState('');
-    const [serviceIcon, setServiceIcon] = useState('content_cut');
-    const [serviceFormError, setServiceFormError] = useState('');
-    const [serviceFormSuccess, setServiceFormSuccess] = useState('');
+    // Service form state removed (moved to ServiceManager)
 
     const isSystemAdmin = currentUser.role === 'system_admin';
 
     useEffect(() => {
         loadUsers();
         loadBarbers();
-        loadServices();
     }, []);
 
     const loadUsers = async () => {
@@ -65,10 +54,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onLogout }
         setBarbers(data);
     };
 
-    const loadServices = async () => {
-        const data = await getServices();
-        setServices(data);
-    };
+
 
     // === USER HANDLERS ===
     const handleCreateUser = async () => {
@@ -148,57 +134,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onLogout }
         }
     };
 
-    // === SERVICE HANDLERS ===
-    const openNewServiceForm = () => {
-        setEditingService(null); setServiceName(''); setServiceDuration(''); setServicePrice('');
-        setServiceDescription(''); setServiceIcon('content_cut');
-        setServiceFormError(''); setServiceFormSuccess(''); setShowServiceForm(true);
-    };
-
-    const openEditServiceForm = (service: Service) => {
-        setEditingService(service);
-        setServiceName(service.name);
-        setServiceDuration(service.duration);
-        setServicePrice(typeof service.price === 'number' ? service.price.toString() : service.price);
-        setServiceDescription(service.description);
-        setServiceIcon(service.icon);
-        setServiceFormError(''); setServiceFormSuccess(''); setShowServiceForm(true);
-    };
-
-    const handleSaveService = async () => {
-        setServiceFormError(''); setServiceFormSuccess('');
-        if (!serviceName || !serviceDuration) { setServiceFormError('Nome e duração são obrigatórios.'); return; }
-
-        const priceValue = (servicePrice === 'Sob Consulta' || !servicePrice) ? null : parseFloat(servicePrice.replace('R$', '').replace(/\s/g, '').replace(',', '.'));
-
-        if (editingService) {
-            const result = await updateService(editingService.id, {
-                name: serviceName, duration: serviceDuration, price: priceValue,
-                description: serviceDescription, icon: serviceIcon
-            });
-            if (result.success) {
-                setServiceFormSuccess('Serviço atualizado!'); loadServices();
-                setTimeout(() => { setShowServiceForm(false); setServiceFormSuccess(''); }, 1000);
-            } else setServiceFormError(result.error || 'Erro ao atualizar.');
-        } else {
-            const result = await createService({
-                name: serviceName, duration: serviceDuration, price: priceValue,
-                description: serviceDescription, icon: serviceIcon
-            });
-            if (result.success) {
-                setServiceFormSuccess('Serviço criado!'); loadServices();
-                setTimeout(() => { setShowServiceForm(false); setServiceFormSuccess(''); }, 1000);
-            } else setServiceFormError(result.error || 'Erro ao criar.');
-        }
-    };
-
-    const handleDeleteService = async (id: string) => {
-        if (confirm('Tem certeza que deseja excluir este serviço?')) {
-            const result = await deleteService(id);
-            if (result.success) loadServices();
-            else alert(result.error);
-        }
-    };
+    // Service handlers removed (moved to ServiceManager)
 
     const getRoleBadge = (role: UserRole) => {
         switch (role) {
@@ -259,121 +195,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, onLogout }
 
                     {/* SERVICES */}
                     {activeTab === 'services' && (
-                        <div className="flex flex-col gap-6">
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-bold">Gerenciar Serviços</h2>
-                                <button onClick={openNewServiceForm} className="bg-primary px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-lg">add</span> Novo Serviço
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {services.map(service => (
-                                    <div
-                                        key={service.id}
-                                        className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-4 group transition-all hover:bg-white/[0.07] hover:border-primary/50 cursor-pointer"
-                                        onClick={() => openEditServiceForm(service)}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex flex-col gap-1">
-                                                <h3 className="font-bold text-lg text-white group-hover:text-primary transition-colors">{service.name}</h3>
-                                                <div className="flex items-center gap-2 text-primary font-black text-sm">
-                                                    <span className="material-symbols-outlined text-sm">schedule</span>
-                                                    {service.duration}
-                                                </div>
-                                            </div>
-                                            <div className="size-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary border border-primary/20">
-                                                <span className="material-symbols-outlined">{service.icon}</span>
-                                            </div>
-                                        </div>
-
-                                        <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed">
-                                            {service.description}
-                                        </p>
-
-                                        <div className="mt-auto pt-4 flex justify-between items-center border-t border-white/5">
-                                            <div>
-                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-0.5">Preço</span>
-                                                <span className="text-xl font-black text-white">
-                                                    {typeof service.price === 'number' ? `R$ ${service.price.toFixed(2)}` : service.price}
-                                                </span>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); openEditServiceForm(service); }}
-                                                    className="size-9 bg-white/5 hover:bg-white/10 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-all"
-                                                >
-                                                    <span className="material-symbols-outlined text-lg">edit</span>
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id); }}
-                                                    className="size-9 bg-red-500/10 hover:bg-red-500/20 rounded-lg flex items-center justify-center text-red-400 transition-all"
-                                                >
-                                                    <span className="material-symbols-outlined text-lg">delete</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Service Form Modal */}
-                            {showServiceForm && (
-                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 animate-in fade-in">
-                                    <div className="bg-[#111722] border border-white/10 rounded-2xl p-6 w-full max-w-md flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-                                        <h3 className="text-lg font-bold">{editingService ? 'Editar Serviço' : 'Novo Serviço'}</h3>
-
-                                        <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-bold text-slate-400 uppercase">Nome</label>
-                                            <input type="text" value={serviceName} onChange={(e) => setServiceName(e.target.value)}
-                                                className="h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-white outline-none focus:border-primary"
-                                                placeholder="Nome do serviço" />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="flex flex-col gap-2">
-                                                <label className="text-xs font-bold text-slate-400 uppercase">Duração</label>
-                                                <input type="text" value={serviceDuration} onChange={(e) => setServiceDuration(e.target.value)}
-                                                    className="h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-white outline-none focus:border-primary"
-                                                    placeholder="45 min" />
-                                            </div>
-                                            <div className="flex flex-col gap-2">
-                                                <label className="text-xs font-bold text-slate-400 uppercase">Preço (R$)</label>
-                                                <input type="text" value={servicePrice} onChange={(e) => setServicePrice(e.target.value)}
-                                                    className="h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-white outline-none focus:border-primary"
-                                                    placeholder="50.00 ou Sob Consulta" />
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-bold text-slate-400 uppercase">Descrição</label>
-                                            <textarea value={serviceDescription} onChange={(e) => setServiceDescription(e.target.value)}
-                                                className="h-20 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-primary resize-none"
-                                                placeholder="Descrição do serviço" />
-                                        </div>
-
-                                        <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-bold text-slate-400 uppercase">Ícone</label>
-                                            <div className="flex flex-wrap gap-2">
-                                                {iconOptions.map(icon => (
-                                                    <button key={icon} onClick={() => setServiceIcon(icon)}
-                                                        className={`size-10 rounded-lg flex items-center justify-center transition-all ${serviceIcon === icon ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
-                                                        <span className="material-symbols-outlined">{icon}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {serviceFormError && <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">{serviceFormError}</div>}
-                                        {serviceFormSuccess && <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm text-center">{serviceFormSuccess}</div>}
-
-                                        <div className="flex gap-3 mt-2">
-                                            <button onClick={() => setShowServiceForm(false)} className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors">Cancelar</button>
-                                            <button onClick={handleSaveService} className="flex-1 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm font-bold transition-colors">{editingService ? 'Salvar' : 'Criar'}</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <ServiceManager />
                     )}
 
                     {/* BARBERS */}

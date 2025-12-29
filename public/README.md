@@ -306,6 +306,9 @@ A integração já está completa nos componentes `CustomerLogin.tsx` e `custome
   - Filtros por período (Hoje, Mês, Personalizado)
   - Lista detalhada de serviços realizados com valores
   - Exportação de dados para Excel/CSV
+- **Gestão de Serviços**:
+  - Criar, Editar e Excluir Serviços
+  - Definir Duração e Preço
 - Gerenciar horários de trabalho (Padrão Semanal)
 - Bloquear dias/horários específicos (Folgas/Feriados)
 - Atualizar status dos agendamentos (Concluir/Cancelar)

@@ -16,6 +16,7 @@ import BottomNavigation from './BottomNavigation';
 import { Page } from '../types';
 import { getBarberAppointments, Appointment, updateAppointmentStatus } from '../services/appointmentService';
 import BarberFinancials from './BarberFinancials';
+import ServiceManager from './ServiceManager';
 
 interface BarberProfileProps {
     currentUser: User;
@@ -27,7 +28,7 @@ const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sáb
 const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) => {
     const [barberId, setBarberId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'weekly' | 'exceptions' | 'appointments' | 'daily' | 'finance'>('appointments');
+    const [activeTab, setActiveTab] = useState<'weekly' | 'exceptions' | 'appointments' | 'daily' | 'finance' | 'services'>('appointments');
 
     // Schedule Config State
     const [configs, setConfigs] = useState<ScheduleConfig[]>([]);
@@ -248,6 +249,12 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                         className={`pb-3 px-4 font-bold whitespace-nowrap text-sm transition-all border-b-2 flex-none snap-start ${activeTab === 'appointments' ? 'text-primary border-primary' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
                     >
                         Agendamentos
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('services')}
+                        className={`pb-3 px-4 font-bold whitespace-nowrap text-sm transition-all border-b-2 flex-none snap-start ${activeTab === 'services' ? 'text-primary border-primary' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                    >
+                        Serviços
                     </button>
                     <button
                         onClick={() => setActiveTab('daily')}
@@ -735,6 +742,13 @@ const BarberProfile: React.FC<BarberProfileProps> = ({ currentUser, onLogout }) 
                 {/* FINANCIAL DASHBOARD */}
                 {activeTab === 'finance' && (
                     <BarberFinancials barberId={barberId} />
+                )}
+
+                {/* SERVICE MANAGER */}
+                {activeTab === 'services' && (
+                    <div className="bg-surface-dark p-6 rounded-2xl border border-white/5">
+                        <ServiceManager />
+                    </div>
                 )}
             </main>
 

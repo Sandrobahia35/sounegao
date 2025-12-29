@@ -26,6 +26,7 @@ const BottomNavigation: React.FC<BottomNavProps> = ({ currentPage, setCurrentPag
         { id: 'daily', label: 'Diário', icon: 'event_busy' },
         { id: 'weekly', label: 'Padrão', icon: 'settings_backup_restore' },
         { id: 'exceptions', label: 'Feriados', icon: 'event_repeat' },
+        { id: 'services', label: 'Serviços', icon: 'content_cut' },
         { id: 'finance', label: 'Gestão', icon: 'monitoring' },
     ];
 
@@ -44,7 +45,7 @@ const BottomNavigation: React.FC<BottomNavProps> = ({ currentPage, setCurrentPag
 
     return (
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-[#111722]/95 backdrop-blur-lg border-t border-white/10 z-[100] safe-area-bottom">
-            <div className="flex justify-around items-center h-16 px-1">
+            <div className="flex items-center h-16 px-2 overflow-x-auto no-scrollbar gap-2 hide-scrollbar">
                 {items.map((item) => {
                     const isActive = (currentPage === Page.BARBER_PROFILE || currentPage === Page.ADMIN)
                         ? activeTab === item.id
@@ -61,7 +62,7 @@ const BottomNavigation: React.FC<BottomNavProps> = ({ currentPage, setCurrentPag
                         <button
                             key={item.id}
                             onClick={onClick}
-                            className={`flex flex-col items-center justify-center flex-1 transition-all ${isActive ? 'text-primary' : 'text-slate-500'
+                            className={`flex flex-col items-center justify-center flex-1 min-w-[70px] transition-all ${isActive ? 'text-primary' : 'text-slate-500'
                                 }`}
                         >
                             <span className={`material-symbols-outlined transition-transform ${isActive ? 'scale-110 !filled-icon' : ''}`}>
