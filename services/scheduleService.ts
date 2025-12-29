@@ -227,6 +227,34 @@ export const getAvailableSlots = async (barberId: string, date: Date): Promise<s
         slots = slots.filter(time => !bookedTimes.includes(time));
     }
 
+    // 7. Filter Past Times (If Today) - NEW FIX
+    const now = new Date();
+    // Adjust for timezone -03:00 manually if environment is UTC but user expects Brazil
+    // But assuming date object is correct relative to system:
+    const todayStr = now.toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD local
+
+    // Check if queried date is today (compare YYYY-MM-DD parts)
+    const queryDateStr = date.toISOString().split('T')[0];
+
+    // Better comparison:
+    // Create 'today' date at 00:00
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    if (targetDate.getTime() === today.getTime()) {
+        const currentH = now.getHours();
+        const currentM = now.getMinutes();
+
+        slots = slots.filter(time => {
+            const [h, m] = time.split(':').map(Number);
+            if (h < currentH) return false;
+            if (h === currentH && m <= currentM) return false;
+            return true;
+        });
+    }
+
     return slots;
 };
 

@@ -167,6 +167,15 @@ const App: React.FC = () => {
       if (result.success) {
         const serviceNames = selectedServices.map((s: Service) => s.name).join(", ");
         alert(`Agendamento realizado com sucesso para ${selectedDate.toLocaleDateString('pt-BR')} às ${selectedTime} com ${selectedBarber.name}!\nServiços: ${serviceNames}`);
+
+        // Reset Booking State
+        setSelectedServices([]);
+        setSelectedBarber(null);
+        setSelectedTime('10:00');
+        // Reset to tomorrow if today is Saturday? Logic exists in useState initializer but good to re-run or just keep today.
+        // We'll keep selectedDate as is for convenience or reset to default logic.
+        // Let's just clear specific selections.
+
         setCurrentPage(Page.HOME);
       } else {
         alert("Erro ao realizar agendamento: " + (result.error || "Erro desconhecido"));
