@@ -108,6 +108,17 @@ const App: React.FC = () => {
     }
   }, [currentPage]);
 
+  // Update userInfo when customer logs in
+  useEffect(() => {
+    if (customerUser) {
+      setUserInfo(prev => ({
+        ...prev,
+        name: customerUser.name || prev.name,
+        email: customerUser.email || prev.email
+      }));
+    }
+  }, [customerUser]);
+
   useEffect(() => {
     if (selectedDate.getDay() === 0) {
       const hour = parseInt(selectedTime.split(':')[0]);
@@ -146,7 +157,7 @@ const App: React.FC = () => {
         barberId: selectedBarber.id,
         customerName: userInfo.name,
         customerPhone: userInfo.phone,
-        customerEmail: userInfo.email,
+        customerEmail: customerUser?.email || userInfo.email, // Use authenticated email if available
         date: selectedDate,
         time: selectedTime,
         serviceIds: selectedServices.map((s: Service) => s.id)

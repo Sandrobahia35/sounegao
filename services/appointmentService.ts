@@ -215,3 +215,37 @@ export const getBarberFinancials = async (
         return [];
     }
 };
+
+export const deleteAppointment = async (appointmentId: string) => {
+    const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('id', appointmentId);
+
+    if (error) {
+        console.error('Error deleting appointment:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+};
+
+export const rescheduleAppointment = async (appointmentId: string, date: string, time: string) => {
+    // Format time to HH:mm:00 if needed
+    const timeStr = time.length === 5 ? `${time}:00` : time;
+
+    const { error } = await supabase
+        .from('appointments')
+        .update({
+            appointment_date: date,
+            appointment_time: timeStr
+        })
+        .eq('id', appointmentId);
+
+    if (error) {
+        console.error('Error rescheduling appointment:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+};

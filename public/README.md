@@ -297,10 +297,18 @@ A integração já está completa nos componentes `CustomerLogin.tsx` e `custome
 - Agendar novos horários (requer login)
 - Usar o ChatBot
 
+### 📅 Gestão de Agendamentos (Cliente)
+- **Visualização**: Histórico completo e próximos agendamentos.
+- **Ações**:
+    - **Cancelar**: Permitido até 30 minutos antes do horário.
+    - **Editar (Reagendar)**: Alteração de data/horário (sujeito à disponibilidade).
+    - **Excluir**: Remoção de agendamentos do histórico.
+- **Segurança**: Apenas o próprio cliente pode gerenciar seus dados.
+
 ### 💈 Barbeiro
 - Acessar área restrita (Login email/senha)
 - Ver agendamentos do dia (Lista e Cards)
-- **Gestão Financeira e Relatórios**:
+- **💰 Gestão Financeira (Barbeiro)**:
   - Dashboard completo com Faturamento, Qtd. Serviços e Ticket Médio
   - Gráfico de evolução diária de receitas
   - Filtros por período (Hoje, Mês, Personalizado)
